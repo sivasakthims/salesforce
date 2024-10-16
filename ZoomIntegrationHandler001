@@ -1,0 +1,75 @@
+global class ZoomIntegrationHandler {
+    @future(callout=true)
+    global static void createZoomMeeting(List<Id> accId) {
+        for (zoom_integration__c zoom : [SELECT Id, TopicOfMeeting__c, Type_of_Meeting__c, Start_Time__c,  Duration_of_Meeting_in_min__c,
+                                         Time_zone__c FROM zoom_integration__c WHERE Id IN :accId]) {
+            // Build the payload following Zoom API requirements
+            Map<String, Object> payload = new Map<String, Object>{
+                'topic' => zoom.TopicOfMeeting__c,
+                'type' => Integer.valueOf(zoom.Type_of_Meeting__c), // Example: 1 = Instant, 2 = Scheduled
+                'start_time' => zoom.Start_Time__c.formatGmt('yyyy-MM-dd\'T\'HH:mm:ss\'Z\''), // ISO 8601 format
+                'duration' => Integer.valueOf(zoom.Duration_of_Meeting_in_min__c),
+                'timezone' => zoom.Time_zone__c,
+                'settings' => new Map<String, Object>{
+                    'host_video' => true,
+                    'participant_video' => false,
+                    'join_before_host' => true,
+                    'mute_upon_entry' => false,
+                    'waiting_room' => false,
+                    'approval_type' => 0, // Automatic approval
+                    'audio' => 'both',
+                    'auto_recording' => 'cloud'
+                }
+            };
+            
+            String jsonString = JSON.serialize(payload);
+            createMeeting(jsonString, zoom.Id);
+        }
+    }
+
+    global static void createMeeting(String jsonBody, Id zoomIntegrationId) {
+        HttpRequest req = new HttpRequest();
+        req.setBody(jsonBody);
+        req.setMethod('POST');
+        req.setHeader('Content-Type', 'application/json');
+        req.setEndpoint('callout:Zoom_integration_named_credential/v2/users/me/meetings');
+        Http http = new Http();
+        HttpResponse res = http.send(req);
+        
+        System.debug('Response Status Code: ' + res.getStatusCode());
+        System.debug('Response Body: ' + res.getBody());
+        
+        zoom_integration__c zoomRecord = new zoom_integration__c(Id = zoomIntegrationId);
+        
+        if (res.getStatusCode() == 201) {
+            Map<String, Object> responseMap = (Map<String, Object>) JSON.deserializeUntyped(res.getBody());
+            Object meetingIdObj = responseMap.get('id');
+            
+            
+        
+           
+             String meetingId = (meetingIdObj instanceof Long) ? String.valueOf((Long) meetingIdObj) : (String) meetingIdObj;
+
+            
+            string JoiningUrl=(string)responseMap.get('join_url');
+            string passcode=(string)responseMap.get('password');
+        
+            System.debug('Meeting created successfully with ID: ' + meetingId);
+            
+            zoomRecord.Zoom_Meeting_ID__c = meetingId;
+            zoomRecord.Meeting_link__c=joiningUrl;
+            zoomRecord.passcode__c=passcode;
+            zoomRecord.Meeting_Status_c__c = 'Created';
+        } else {
+            System.debug('Failed to create meeting: ' + res.getBody());
+            zoomRecord.Meeting_Status_c__c = 'Failed';
+            zoomRecord.Error_Message_c__c = 'Failed to create meeting: ' + res.getBody();
+        }
+        
+        try {
+            update zoomRecord;
+        } catch (Exception e) {
+            System.debug('Error updating zoom_integration__c record: ' + e.getMessage());
+        }
+    }
+}
