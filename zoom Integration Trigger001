@@ -1,0 +1,14 @@
+trigger zoomTriggernew on zoom_integration__c (after insert) {
+    
+    list <id>accid=new list<id>();
+    
+    if(trigger.isAfter && Trigger.isInsert){
+        for(zoom_integration__c zoom : trigger.new){
+    accid.add(zoom.id);
+
+        }
+         ZoomIntegrationHandler.createZoomMeeting(accid);
+
+    }
+
+}
