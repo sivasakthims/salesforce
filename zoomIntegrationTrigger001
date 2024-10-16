@@ -9,6 +9,7 @@ trigger zoomTriggernew on zoom_integration__c (after insert) {
         }
          ZoomIntegrationHandler.createZoomMeeting(accid);
 
+
     }
 
 }
